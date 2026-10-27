@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloud Quiz</title>
+<style>
+  :root { --bg:#f3f6fa; --card:#fff; --ink:#14213d; --muted:#5b6b82; --accent:#1d4ed8; --ok:#15803d; --bad:#b91c1c; --line:#d9e1ec; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height:1.5; }
+  main { max-width:560px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  p.sub { margin:0 0 20px; color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
+  input[type=text] { width:100%; padding:10px 12px; font-size:1rem; border:1px solid var(--line); border-radius:6px; margin:8px 0 14px; }
+  button { font:inherit; font-weight:600; padding:10px 18px; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .progress { font-size:.9rem; color:var(--muted); margin-bottom:6px; }
+  .q { font-size:1.15rem; font-weight:600; margin:0 0 14px; }
+  .opt { display:block; width:100%; text-align:left; background:#fff; color:var(--ink); border:1px solid var(--line); margin-bottom:8px; font-weight:400; }
+  .opt:hover:not(:disabled) { border-color:var(--accent); }
+  .opt.right { border-color:var(--ok); background:#ecfdf3; }
+  .opt.wrong { border-color:var(--bad); background:#fef2f2; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+  td.num, th.num { text-align:right; }
+  .big { font-size:2.4rem; font-weight:700; margin:0; }
+  .msg { color:var(--muted); font-size:.95rem; }
+  .hidden { display:none; }
+  :focus-visible { outline:3px solid #93c5fd; outline-offset:2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cloud Computing Quiz</h1>
+  <p class="sub">5 questions. Your score goes on the leaderboard.</p>
+
+  <!-- Start -->
+  <section id="start" class="card">
+    <label for="name">Your name</label>
+    <input type="text" id="name" maxlength="30" placeholder="e.g. Ananya">
+    <button id="startBtn">Start quiz</button>
+  </section>
+
+  <!-- Quiz -->
+  <section id="quiz" class="card hidden">
+    <div class="progress" id="progress"></div>
+    <p class="q" id="question"></p>
+    <div id="options"></div>
+    <button id="nextBtn" class="hidden">Next</button>
+  </section>
+
+  <!-- Result -->
+  <section id="result" class="card hidden">
+    <p class="msg">Your score</p>
+    <p class="big" id="finalScore"></p>
+    <p class="msg" id="saveStatus">Saving to the cloud…</p>
+    <button id="againBtn" class="ghost">Take it again</button>
+  </section>
+
+  <!-- Leaderboard -->
+  <section id="board" class="card">
+    <h2 style="margin-top:0;font-size:1.2rem">Leaderboard</h2>
+    <table>
+      <thead><tr><th>#</th><th>Name</th><th class="num">Score</th></tr></thead>
+      <tbody id="boardBody"><tr><td colspan="3" class="msg">Loading…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+  // Same origin: the page and the API are served by the same API Gateway URL.
+  const API_URL = "";
+
+  const QUESTIONS = [
+    { q: "Which AWS service provides object storage?", o: ["EC2", "S3", "Lambda", "RDS"], a: 1 },
+    { q: "Which service runs your code without managing servers?", o: ["Lambda", "EBS", "VPC", "Route 53"], a: 0 },
+    { q: "Which of these is a NoSQL database service?", o: ["Aurora", "Redshift", "DynamoDB", "CloudFront"], a: 2 },
+    { q: "Virtual machines on demand are an example of which model?", o: ["SaaS", "PaaS", "IaaS", "DaaS"], a: 2 },
+    { q: "'Pay-as-you-go' in cloud means you…", o: ["Pay a fixed yearly fee", "Pay only for what you use", "Buy the hardware", "Pay nothing"], a: 1 }
+  ];
+
+  const $ = id => document.getElementById(id);
+  let name = "", index = 0, score = 0, answered = false;
+
+  function show(id) {
+    ["start", "quiz", "result"].forEach(s => $(s).classList.toggle("hidden", s !== id));
+  }
+
+  $("startBtn").onclick = () => {
+    name = $("name").value.trim();
+    if (!name) { $("name").focus(); return; }
+    index = 0; score = 0;
+    show("quiz");
+    renderQuestion();
+  };
+
+  function renderQuestion() {
+    const item = QUESTIONS[index];
+    answered = false;
+    $("progress").textContent = `Question ${index + 1} of ${QUESTIONS.length}`;
+    $("question").textContent = item.q;
+    $("nextBtn").classList.add("hidden");
+    $("nextBtn").textContent = index === QUESTIONS.length - 1 ? "Finish" : "Next";
+    const box = $("options");
+    box.innerHTML = "";
+    item.o.forEach((text, i) => {
+      const b = document.createElement("button");
+      b.className = "opt";
+      b.textContent = text;
+      b.onclick = () => choose(i);
+      box.appendChild(b);
+    });
+  }
+
+  function choose(i) {
+    if (answered) return;
+    answered = true;
+    const correct = QUESTIONS[index].a;
+    if (i === correct) score++;
+    [...$("options").children].forEach((b, n) => {
+      b.disabled = true;
+      if (n === correct) b.classList.add("right");
+      else if (n === i) b.classList.add("wrong");
+    });
+    $("nextBtn").classList.remove("hidden");
+  }
+
+  $("nextBtn").onclick = () => {
+    index++;
+    if (index < QUESTIONS.length) renderQuestion();
+    else finish();
+  };
+
+  async function finish() {
+    show("result");
+    $("finalScore").textContent = `${score} / ${QUESTIONS.length}`;
+    $("saveStatus").textContent = "Saving to the cloud…";
+    try {
+      const res = await fetch(API_URL + "/scores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, score })
+      });
+      if (!res.ok) throw new Error("Save failed");
+      $("saveStatus").textContent = "Score saved.";
+    } catch (e) {
+      $("saveStatus").textContent = "Could not save your score. Check the API URL and CORS settings.";
+    }
+    loadBoard();
+  }
+
+  async function loadBoard() {
+    const body = $("boardBody");
+    try {
+      const res = await fetch(API_URL + "/scores");
+      if (!res.ok) throw new Error();
+      const rows = await res.json();
+      body.innerHTML = "";
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="3" class="msg">No scores yet. Be the first.</td></tr>';
+        return;
+      }
+      rows.forEach((r, i) => {
+        const tr = document.createElement("tr");
+        [i + 1, r.name, r.score].forEach((v, c) => {
+          const td = document.createElement("td");
+          td.textContent = v;           // textContent avoids injecting HTML from user names
+          if (c === 2) td.className = "num";
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="3" class="msg">Could not load the leaderboard.</td></tr>';
+    }
+  }
+
+  $("againBtn").onclick = () => { $("name").value = name; show("start"); };
+
+  loadBoard();
+</script>
+</body>
+</html>
